@@ -3,8 +3,12 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views import generic
 
+from .forms import QuestionCreateForm, ChoiceCreateForm
+
 from .models import Choice, Question
 
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse_lazy
 
 class IndexView(generic.ListView):
     template_name = 'polls/index.html'
@@ -18,6 +22,25 @@ class IndexView(generic.ListView):
 class DetailView(generic.DetailView):
     model = Question
     template_name = 'polls/detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['choice_form'] = ChoiceCreateForm()
+        return context
+
+    def post(self, request, pk):
+        form = ChoiceCreateForm(request.POST)
+        if form.is_valid:
+            choice = form.save(commit=False)
+            choice.question = Question.objects.get(pk=pk)
+            choice.save()
+            return HttpResponseRedirect(reverse('polls:detail', args=[pk]))
+        # else if form is not valid
+        context = {
+          'choice_form': form,
+          'question': Question.objects.get(pk=pk)
+        }
+        return render(request, 'polls/detail.html', context)
 
 
 class ResultsView(generic.DetailView):
@@ -41,3 +64,23 @@ def vote(request, question_id):
         # with POST data. This prevents data from being posted twice if a
         # user hits the Back button.
         return HttpResponseRedirect(reverse('polls:results', args=(question.id,)))
+
+class QuestionCreateView(LoginRequiredMixin, generic.edit.CreateView):
+    login_url = reverse_lazy('login')
+
+    def get(self, request, *args, **kwargs):
+        context = {
+          'form': QuestionCreateForm()
+        }
+        return render(request, 'polls/create.html', context)
+
+    def post(self, request, *args, **kwargs):
+        form = QuestionCreateForm(request.POST)
+        if form.is_valid:
+            question = form.save(commit=False) # don't save the question yet
+            question.author = request.user
+            question.save()
+            return HttpResponseRedirect(
+                reverse('polls:detail', args=[question.id]))
+        # else if form is not valid
+        return render(request, 'polls/create.html', { 'form': form })
